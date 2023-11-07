@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta name="description" content="" />
+        <meta name="author" content="" />
+        <title>Room Manager - Ibooking Admin</title>
+        <style type="text/css">
+            body, html,#map_canvas {width: 100%;height: 100%;overflow: hidden;margin:0;font-family:"微软雅黑";}
+        </style>
+        <link href="https://cdn.jsdelivr.net/npm/simple-datatables@7.1.2/dist/style.min.css" rel="stylesheet" />
+        <link href="/static/styles.css" rel="stylesheet" />
+        <script src="https://use.fontawesome.com/releases/v6.3.0/js/all.js" crossorigin="anonymous"></script>
+        <script src="/static/jQuery.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+        <script src="/static/scripts.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/simple-datatables@7.1.2/dist/umd/simple-datatables.min.js" crossorigin="anonymous"></script>
+        <script src="/static/datatables.min.js"></script>
+        <script type="text/javascript" src="https://api.map.baidu.com/api?v=3.0&type=webgl&ak=FVNbi9W0y8GFl0zc50C7n9fzu235a9gv"></script>
+        <script type="application/javascript">
+                
+                var marker = new BMapGL.Marker(new BMapGL.Point(parseFloat(121.51186), parseFloat(31.34207)), {
+                    enableDragging: true
+                });
+                marker.addEventListener('click', function () {
+                    console.log(marker.latLng.lat, marker.latLng.lng)
+                });
+            
+
+            $(document).ready(function() {
+
+                var map = new BMapGL.Map("map_canvas");    // 创建Map实例
+                map.centerAndZoom(new BMapGL.Point(parseFloat(121.51186), parseFloat(31.34207)), 19);  // 初始化地图,设置中心点坐标和地图级别
+                map.enableScrollWheelZoom(true);     //开启鼠标滚轮缩放
+                var scaleCtrl = new BMapGL.ScaleControl();  // 添加比例尺控件
+                map.addControl(scaleCtrl);
+                var zoomCtrl = new BMapGL.ZoomControl();  // 添加缩放控件
+                map.addControl(zoomCtrl);
+                var cityCtrl = new BMapGL.CityListControl();  // 添加城市列表控件
+                map.addControl(cityCtrl);
+                map.addOverlay(marker);
+
+                var room_table = $('#room_table').DataTable({
+                    'dom': 'ltipr',
+                    'columnDefs': [
+                        {
+                            "targets": 10,
+                            "data": null,
+                            'orderable': false,
+                            "defaultContent": '<a href="#" class="btn btn-primary btn-icon-split mr-4" id="button_show_seats"><span class="text">seats</span></a> \
+                                               <a href="#" class="btn btn-primary btn-icon-split mr-4" id="button_update_room"><span class="text">update</span></a>'
+                        }, 
+                    ]
+                });
+
+                var seat_table = $('#seat_table').DataTable({
+                    'dom': 'ltipr',
+                    'columnDefs': [
+                        {
+                            "targets": 5,
+                            "data": null,
+                            'orderable': false,
+                            "defaultContent": '<a href="#" class="btn btn-primary btn-icon-split mr-4" id="button_update_seat"><span class="text">update</span></a> '
+                        }, 
+                    ]
+                });
+
+                $("#room_table tbody").on('click', '#button_show_seats', function () {
+                    var row_id = room_table.row($(this).parents('tr')).data()[0];
+                    console.log(row_id)
+                    seat_table_reload(row_id)
+                    $('#seats_card').modal('show')
+                });
+
+                $("#room_table tbody").on('click', '#button_update_room', function () {
+                    $('#room_form').modal('show');
+                    var row = room_table.row($(this).parents('tr')).data();
+                    var latitude = row[4];
+                    var longtitude = row[5];
+                    $('#room_post_label').text('修改自习室信息')
+                    $('#room_id').text(row[0]);
+                    $('#room_name').val(row[1]);
+                    $('#room_area').val(row[2]);
+                    $('#room_building').val(row[3]);
+                    $('#map_lat').val(row[4]);
+                    $('#map_lng').val(row[5]);
+                    $('#room_start').val(row[6]);
+                    $('#room_persist').val(row[7]);
+                    $('input[name=room_hidden][value=true]').prop('checked', row[8]);
+                });
+                
+                $("#seat_table tbody").on('click', '#button_update_seat', function () {
+                    $('#seat_form').modal('show');
+                    var row = seat_table.row($(this).parents('tr')).data();
+                    console.log(row)
+                    $('#seat_post_label').text('修改座位信息');
+                    $('#seat_id').text(row[0]);
+                    $('#seat_seat_id').val(row[2]);
+                    $('#seat_mark').val(row[3]);
+                    $('input[name=seat_hidden][value=true]').prop('checked', row[4]);
+                });
+
+                room_table_reload()
+
+                function get_self() {
+                    $.ajax({
+                        url: '/user/get_self',
+                        method: 'get',
+                        success: (response) => {
+                            console.log(response['data']['authority'])
+                            if (response['data']['authority'] == 1) {
+                                $('#authoirty').text('Super Administrator')
+                            }
+                            $('#user_name').text(response['data']['name']);
+                        }
+                    })
+                }
+
+                get_self()
+
+            });
+            function seat_table_reload(room_id) {
+                if (room_id == null) {
+                    room_id = $('#seats_room_id').text();
+                }
+                $.ajax({
+                    url: "/room/admin/list_seat?" + 'room_id=' + room_id,
+                    method: 'get',
+                    success: (response) => {
+                        console.log(response['seats']);
+                        var seats = response['seats'];
+                        var arr = [];
+                        for(var key in seats) {
+                            var seat = seats[key];
+                            var row = [
+                                seat['id'],
+                                seat['room_id'],
+                                seat['seat_id'],
+                                seat['mark'],
+                                seat['is_hidden']
+                            ]
+                            arr.push(row);
+                        }
+                        var seat_table = $('#seat_table').DataTable();
+                        seat_table.clear().draw();
+                        seat_table.rows.add(arr).draw();
+                    }
+
+                })
+                $('#seats_room_id').text(room_id);
+            }
+            
+            function room_table_reload() {
+                $.ajax({
+                    url: "/room/admin/list_room",
+                    method: 'get',
+                    success: (response) => {
+                        console.log(response['rooms']);
+                        var rooms = response['rooms'];
+                        var arr = [];
+                        for(var key in rooms) {
+                            var room = rooms[key]
+                            var row = [
+                                room['id'],
+                                room['name'],
+                                room['area'],
+                                room['building'],
+                                room['location_y'],
+                                room['location_x'],
+                                room['start_time'],
+                                room['persist_time'],
+                                room['is_hidden'],
+                                room['count'],
+                            ]
+                            arr.push(row);
+                        }
+                        var room_table = $('#room_table').DataTable();
+                        room_table.clear().draw();
+                        room_table.rows.add(arr).draw();
+                    }
+                })
+            }
+
+            function get_location() {
+                console.log(marker.latLng.lat, marker.latLng.lng);
+                $('#map_lat').val(marker.latLng.lat);
+                $('#map_lng').val(marker.latLng.lng);
+            }
+
+            function room_post() {
+                var room_id = $('#room_id').text();
+                if (room_id === '') {
+                    create_room();
+                }
+                else {
+                    update_room();
+                }
+            }
+
+            function update_room() {
+                var is_hidden = 0;
+                var is_hidden_obj = document.getElementsByName("room_hidden");
+                for(k in is_hidden_obj) {
+                    if (is_hidden_obj[k].checked) {
+                        is_hidden = 1;
+                    }
+                }
+                $.ajax({
+                    url: '/room/admin/rev_room',
+                    method: 'post',
+                    data: {
+                        'id': $('#room_id').text(),
+                        'name': $('#room_name').val(),
+                        'area': $('#room_area').val(),
+                        'building': $('#room_building').val(),
+                        'location_x': $('#map_lng').val(),
+                        'location_y': $('#map_lat').val(),
+                        'start_time': $('#room_start').val(),
+                        'persist_time': $('#room_persist').val(),
+                        'is_hidden': is_hidden
+                    },
+                    success: (response) => {
+                        if (response['success'] == true) {
+                            room_table_reload();
+                        }
+                        else {
+                            alert("修改自习室信息失败");
+                        }
+                    }
+                })
+            }
+
+            function open_create_room_window() {
+                $('#room_post_label').text('创建自习室')
+                $('#room_id').text('');
+                $('#room_name').val('');
+                $('#room_area').val('');
+                $('#room_building').val('');
+                $('#map_lat').val(31.34207);
+                $('#map_lng').val(121.51186);
+                $('#room_start').val(7);
+                $('#room_persist').val(15);
+                $('input[name=room_hidden][value=true]').prop('checked', false);
+                $('#room_form').modal('show');
+            }
+
+            function open_create_seat_window() {
+                $('#seat_post_label').text('创建座位')
+                $('#seat_id').text('');
+                $('#seat_seat_id').val('');
+                $('#seat_mark').val('0');
+                $('input[name=seat_hidden][value=true]').prop('checked', false);
+                $('#seat_form').modal('show');
+            }
+
+            function create_room() {
+                var is_hidden = 0;
+                var is_hidden_obj = document.getElementsByName("room_hidden_create");
+                for(k in is_hidden_obj) {
+                    if (is_hidden_obj[k].checked) {
+                        is_hidden = 1;
+                    }
+                }
+                $.ajax({
+                    url: '/room/admin/add_room',
+                    method: 'post',
+                    data: {
+                        'name': $('#room_name').val(),
+                        'area': $('#room_area').val(),
+                        'building': $('#room_building').val(),
+                        'location_x': $('#map_lng').val(),
+                        'location_y': $('#map_lat').val(),
+                        'start_time': $('#room_starte').val(),
+                        'persist_time': $('#room_persist').val(),
+                        'is_hidden': is_hidden
+                    },
+                    success: (response) => {
+                        if (response['success'] != false) {
+                            room_table_reload();
+                        }
+                        else {
+                            alert("创建自习室失败");
+                        }
+                    }
+                })
+            }
+
+            function seat_post() {
+                var seat_id = $('#seat_id').text();
+                if (seat_id === '') {
+                    create_seat();
+                }
+                else {
+                    update_seat();
+                }
+            }
+
+            function update_seat() {
+                var is_hidden = 0;
+                var is_hidden_obj = document.getElementsByName("seat_hidden");
+                for(k in is_hidden_obj) {
+                    if (is_hidden_obj[k].checked) {
+                        is_hidden = 1;
+                    }
+                }
+                $.ajax({
+                    url: '/room/admin/rev_seat',
+                    method: 'post',
+                    data: {
+                        'id': $('#seat_id').text(),
+                        'seat_id': $('#seat_seat_id').val(),
+                        'mark': $('#seat_mark').val(),
+                        'is_hidden': is_hidden
+                    },
+                    success: (response) => {
+                        if (response['success'] == true) {
+                            seat_table_reload();
+                        }
+                        else {
+                            alert("修改座位信息失败");
+                        }
+                    }
+                })
+            }
+
+            function create_seat() {
+                var is_hidden = 0;
+                var is_hidden_obj = document.getElementsByName("seat_hidden");
+                for(k in is_hidden_obj) {
+                    if (is_hidden_obj[k].checked) {
+                        is_hidden = 1;
+                    }
+                }
+                $.ajax({
+                    url: '/room/admin/add_seat',
+                    method: 'post',
+                    contentType: 'application/json',
+                    data: JSON.stringify([{
+                        'room_id': $('#seats_room_id').text(),
+                        'seat_id': $('#seat_seat_id').val(),
+                        'mark': $('#seat_mark').val(),
+                        'is_hidden': is_hidden
+                    }]),
+                    success: (response) => {
+                        if (response['success'] != false) {
+                            seat_table_reload();
+                        }
+                        else {
+                            alert("创建座位信息失败");
+                        }
+                    }
+                })
+            }
+
+            function logout() {
+                $.ajax({
+                    url: '/user/logout',
+                    method: 'post',
+                    success: (response) => {
+                        if (response['msg'] === 'logout') {
+                            window.open('/user/admin/login')
+                        }
+                    }
+                })
+            }
+
+        </script>
+    </head>
+    <body class="sb-nav-fixed">
+        <nav class="sb-topnav navbar navbar-expand navbar-dark bg-dark">
+            <!-- Navbar Brand-->
+            <a class="navbar-brand ps-3" href="index.html">Ibooking Admin</a>
+            <!-- Sidebar Toggle-->
+            <button class="btn btn-link btn-sm order-1 order-lg-0 me-4 me-lg-0" id="sidebarToggle" href="#!"><i class="fas fa-bars"></i></button>
+            <!-- Navbar Search-->
+            <form class="d-none d-md-inline-block form-inline ms-auto me-0 me-md-3 my-2 my-md-0">
+                <!-- <div class="input-group">
+                    <input class="form-control" type="text" placeholder="Search for..." aria-label="Search for..." aria-describedby="btnNavbarSearch" />
+                    <button class="btn btn-primary" id="btnNavbarSearch" type="button"><i class="fas fa-search"></i></button>
+                </div> -->
+            </form>
+            <!-- Navbar-->
+            <ul class="navbar-nav ms-auto ms-md-0 me-3 me-lg-4">
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" id="navbarDropdown" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="fas fa-user fa-fw"></i></a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                        <li><a class="dropdown-item" href="#!"><label id="user_name"></label></a></li>
+                        <li><hr class="dropdown-divider" /></li>
+                        <li><a class="dropdown-item" href="#!" onclick="logout()">Logout</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </nav>
+        <div id="layoutSidenav">
+            <div id="layoutSidenav_nav">
+                <nav class="sb-sidenav accordion sb-sidenav-dark" id="sidenavAccordion">
+                    <div class="sb-sidenav-menu">
+                        <div class="nav">
+                            <div class="sb-sidenav-menu-heading">PAGE</div>
+                            <a class="nav-link" href="/user/admin/page">
+                                <div class="sb-nav-link-icon"><i class="fas fa-user fa-fw"></i></div>
+                                User Manager
+                            </a>
+                            <a class="nav-link" href="/room/admin/page">
+                                <div class="sb-nav-link-icon"><i class="fas fa-tachometer-alt"></i></div>
+                                Room Manager
+                            </a>
+                            <a class="nav-link" href="/book/admin/page">
+                                <div class="sb-nav-link-icon"><i class="fas fa-solid fa-clock"></i></div>
+                                Booking Manager
+                            </a>
+                        </div>
+                    </div>
+                    <div class="sb-sidenav-footer">
+                        <div class="small">Logged in as:</div>
+                        <label id="authoirty"> Start Bootstrap </label>
+                        
+                    </div>
+                </nav>
+            </div>
+            <div id="layoutSidenav_content">
+                <main>
+                    <div class="container-fluid px-4">
+                        <div class="modal fade " id="seats_card" aria-labelledby="myModallabel" aria-hidden="true" tabindex="-1">
+                            <div class="modal-dialog mw-100 w-75">
+                                <div class="modal-content card shadow mb-4">
+                                    <div class="card shadow w-100 mb-4">
+                                        <div class="card-header">
+                                            <label>座位列表</label>
+                                        </div>
+                                        <div class="modal fade " id="seat_form" aria-labelledby="myModallabel" aria-hidden="true" tabindex="-1">
+                                            <div class="modal-dialog mw-100 w-75">
+                                                <div class="modal-content card shadow mb-4">
+                                                    <div class="card shadow w-100 mb-4">
+                                                        <div class="card-header">
+                                                            <label id="seat_post_label">修改座位信息</label>
+                                                        </div>
+                                                        <div calss="card-body">
+                                                            <div class="form-group">
+                                                                <label>ID：</label>
+                                                                <label id="seat_id"></label>
+                                                            </div>
+                                                            <div class="form-group">
+                                                                <label> 座位编号： </label>
+                                                                <input type="text" id="seat_seat_id">
+                                                                <label> 特殊标记： </label>
+                                                                <select id='seat_mark'>
+                                                                    <option value='0'> 普通 </option>
+                                                                    <option value='1'> 有电源插座 </option>
+                                                                </select>
+                                                            </div>
+                                                            <div class="form-group">
+                                                                <label> 对用户隐藏：</label>
+                                                                <input type="checkbox" name="seat_hidden" value="true">
+                                                            </div>
+                                                            <div class="form-group">
+                                                                <a onclick="seat_post()" class="btn btn-primary"><span class="text">提交</span></a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+
+                                        <div class="card-body">
+                                            <label>ID</label>
+                                            <label id="seats_room_id"></label>
+                                            <div class="table-responsive">
+                                                <table class="table table-bordered" id="seat_table" width="100%" cellspacing="0" style="text-align: center;">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>ID</th>
+                                                            <th>Room ID</th>
+                                                            <th>Seat ID</th>
+                                                            <th>Mark</th>
+                                                            <th>Hidden</th>
+                                                            <th>Operation</th>
+                                                        </tr>
+                                                    </thead>
+                                                </table>
+                                            </div>
+                                            <div class="d-flex align-items-center justify-content-between mt-4 mb-0">
+                                                <label> </label>
+                                                <div>
+                                                    <a class="btn btn-primary px-4" onclick="seat_table_reload()"><span class="text">refresh</span></a>
+                                                    <a class="btn btn-primary px-4" onclick="open_create_seat_window()"><span class="text">create</span></a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="modal fade " id="room_form" aria-labelledby="myModallabel" aria-hidden="true" tabindex="-1">
+                            <div class="modal-dialog mw-100 w-75">
+                                <div class="modal-content card shadow mb-4">
+                                    <div class="card shadow w-100 mb-4">
+                                        <div class="card-header">
+                                            <label id="room_post_label">修改自习室信息</label>
+                                        </div>
+                                        <div calss="card-body">
+                                            <div class="form-group">
+                                                <label>ID：</label>
+                                                <label id="room_id"></label>
+                                            </div>
+                                            <div class="form-group">
+                                                <label> 房间名： </label>
+                                                <input type="text" id="room_name">
+                                                <label> 区域： </label>
+                                                <input type="text" id="room_area">
+                                                <label> 建筑： </label>
+                                                <input type="text" id="room_building">
+                                            </div>
+                                            <div class="form-group">
+                                                <label> 开放时间： </label>
+                                                <input type="text" id="room_start">
+                                                <label> 持续时间： </label>
+                                                <input type="text" id="room_persist">
+                                            </div>
+                                            <div class="form-group">
+                                                <label> 对用户隐藏：</label>
+                                                <input type="checkbox" name="room_hidden" value="true">
+                                            </div>
+                                            <div class="form-group">
+                                                <label> 经度： </label>
+                                                <input type="text" id="map_lat">
+                                                <label> 纬度： </label>
+                                                <input type="text" id="map_lng">
+                                                <a onclick="get_location()" class="btn btn-primary"><span class="text">获取坐标</span></a>
+                                            </div>
+                                            <div class="form-group">
+                                                <a onclick="room_post()" class="btn btn-primary"><span class="text">提交</span></a>
+                                            </div>
+                                            <div id="map_canvas" style='width: 100%; height: 768px;overflow: hidden;margin:0;font-family:"微软雅黑";'>
+                                                
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h1 class="mt-4">Room Manager</h1>
+                        <div class="modal fade " id="seats_card" aria-labelledby="myModallabel" aria-hidden="true" tabindex="-1">
+                            <div class="modal-dialog mw-100 w-75">
+                                <div class="modal-content card shadow mb-4">
+                                    <div class="card shadow w-100 mb-4">
+                                        <div class="card-header">
+                                            <label>座位列表</label>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="table-responsive">
+                                                <table class="table table-bordered" id="seat_table" width="100%" cellspacing="0" style="text-align: center;">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>ID</th>
+                                                            <th>Room ID</th>
+                                                            <th>Seat ID</th>
+                                                            <th>Mark</th>
+                                                            <th>Hidden</th>
+                                                            <th>Operation</th>
+                                                        </tr>
+                                                    </thead>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <label>自习室列表</label>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-bordered" id="room_table" width="100%" cellspacing="0" style="text-align: center;">
+                                        <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>Name</th>
+                                                <th>Area</th>
+                                                <th>Building</th>
+                                                <th>Latitude</th>
+                                                <th>Longtitude</th>
+                                                <th>Start time</th>
+                                                <th>Persist time</th>
+                                                <th>Hidden</th>
+                                                <th>Count</th>
+                                                <th>Operation</th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+                                </div>
+                                <div class="d-flex align-items-center justify-content-between mt-4 mb-0">
+                                    <label> </label>
+                                    <div>
+                                        <a class="btn btn-primary px-4" onclick="room_table_reload()"><span class="text">refresh</span></a>
+                                        <a class="btn btn-primary px-4" onclick="open_create_room_window()"><span class="text">create</span></a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                </main>
+                <footer class="py-4 bg-light mt-auto">
+                    <div class="container-fluid px-4">
+                        <div class="d-flex align-items-center justify-content-between small">
+                            <div class="text-muted">Copyright &copy; Ibooking-Admin 2023</div>
+                            <div>
+                                <a href="#">Privacy Policy</a>
+                                &middot;
+                                <a href="#">Terms &amp; Conditions</a>
+                            </div>
+                        </div>
+                    </div>
+                </footer>
+            </div>
+        </div>
+    </body>
+</html>

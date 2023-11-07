@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta name="description" content="" />
+        <meta name="author" content="" />
+        <title>User Manager - Ibooking Admin</title>
+        <!-- <link href="https://cdn.jsdelivr.net/npm/simple-datatables@7.1.2/dist/style.min.css" rel="stylesheet" /> -->
+        <link href="/static/styles.css" rel="stylesheet" />
+        <script src="https://use.fontawesome.com/releases/v6.3.0/js/all.js" crossorigin="anonymous"></script>
+        <script src="/static/jQuery.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+        <script src="/static/scripts.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js" crossorigin="anonymous"></script>
+        <script src="/static/datatables.min.js"></script>
+        <script src="/static/jsencrypt.js" ></script>
+        <script type="application/javascript">
+            
+            var en = new JSEncrypt();
+
+            
+
+            $(document).ready(function() {
+                
+                $.ajax({
+                    url: '/user/admin/public_key',
+                    method: 'get',
+                    success: (response) => {
+                        console.log(response['public_key']);
+                        en.setPublicKey(response['public_key']);
+                    }
+                });
+
+                var user_table = $('#user_table').DataTable({
+                    'dom': 'ltipr',
+                    'columnDefs': [
+                        {
+                            "targets": 5,
+                            "data": null,
+                            'orderable': false,
+                            "defaultContent": '<a href="#" class="btn btn-primary btn-icon-split mr-4" id="button_update_password"><span class="text">重置密码</span></a> \
+                                               <a href="#" class="btn btn-primary btn-icon-split mr-4" id="button_update_authority"><span class="text">切换权限组</span></a>'
+                        }, 
+                    ]
+                });
+
+                $("#user_table tbody").on('click', '#button_update_password', function () {
+                    var row = user_table.row($(this).parents('tr')).data();
+                    $.ajax({
+                        url: '/user/admin/update_user',
+                        method: 'post',
+                        data: {
+                            'id': row[0],
+                            'password': en.encrypt('111111'),
+                        },
+                        success: (response) => {
+                            if (response['success'] == true) {
+                                alert('密码重置成功');
+                            }
+                            else {
+                                alert('密码重置失败');
+                            }
+                        }
+                    })
+                });
+
+                $("#user_table tbody").on('click', '#button_update_authority', function () {
+                    var row = user_table.row($(this).parents('tr')).data();
+                    console.log(1-parseInt(row[4]))
+                    $.ajax({
+                        url: '/user/admin/update_user',
+                        method: 'post',
+                        data: {
+                            'id': row[0],
+                            'authority': 1-parseInt(row[4]),
+                        },
+                        success: (response) => {
+                            user_table_reload()
+                        }
+                    })
+                });
+
+                user_table_reload()
+
+                function get_self() {
+                    $.ajax({
+                        url: '/user/get_self',
+                        method: 'get',
+                        success: (response) => {
+                            console.log(response['data']['authority'])
+                            if (response['data']['authority'] == 1) {
+                                $('#nav_authoirty').text('Super Administrator')
+                            }
+                            $('#nav_user_name').text(response['data']['name']);
+                        }
+                    })
+                }
+
+                get_self()
+
+            });
+            
+            function user_table_reload() {
+                $.ajax({
+                    url: "/user/admin/get_all",
+                    method: 'get',
+                    success: (response) => {
+                        var users = response['data'];
+                        var arr = [];
+                        for(var key in users) {
+                            var user = users[key]
+                            var row = [
+                                user['id'],
+                                user['name'],
+                                user['email'],
+                                user['mark'],
+                                user['authority'],
+                            ]
+                            arr.push(row);
+                        }
+                        var user_table = $('#user_table').DataTable();
+                        user_table.clear().draw();
+                        user_table.rows.add(arr).draw();
+                    }
+                })
+            }
+
+            function open_create_user_window() {
+                $('#user_name_create').val('');
+                $('#user_password_create').val('');
+                $('#user_email_create').val('');
+                $('#user_create_card').modal('show');
+            }
+
+            function create_user() {
+                var is_hidden = 0;
+                var is_hidden_obj = document.getElementsByName("user_hidden_create");
+                for(k in is_hidden_obj) {
+                    if (is_hidden_obj[k].checked) {
+                        is_hidden = 1;
+                    }
+                }
+                $.ajax({
+                    url: '/user/register',
+                    method: 'post',
+                    data: {
+                        'name': $('#user_name_create').val(),
+                        'password': en.encrypt($('#user_password_create').val()),
+                        'email': $('#user_email_create').val(),
+                    },
+                    success: (response) => {
+                        if (response['success'] != false) {
+                            user_table_reload();
+                        }
+                        else {
+                            alert("创建新用户失败");
+                        }
+                    }
+                })
+            }
+
+            function logout() {
+                $.ajax({
+                    url: '/user/logout',
+                    method: 'post',
+                    success: (response) => {
+                        if (response['msg'] === 'logout') {
+                            window.open('/user/admin/login')
+                        }
+                    }
+                })
+            }
+
+        </script>
+    </head>
+    <body class="sb-nav-fixed">
+        <nav class="sb-topnav navbar navbar-expand navbar-dark bg-dark">
+            <!-- Navbar Brand-->
+            <a class="navbar-brand ps-3" href="index.html">Ibooking Admin</a>
+            <!-- Sidebar Toggle-->
+            <button class="btn btn-link btn-sm order-1 order-lg-0 me-4 me-lg-0" id="sidebarToggle" href="#!"><i class="fas fa-bars"></i></button>
+            <!-- Navbar Search-->
+            <form class="d-none d-md-inline-block form-inline ms-auto me-0 me-md-3 my-2 my-md-0">
+                <!-- <div class="input-group">
+                    <input class="form-control" type="text" placeholder="Search for..." aria-label="Search for..." aria-describedby="btnNavbarSearch" />
+                    <button class="btn btn-primary" id="btnNavbarSearch" type="button"><i class="fas fa-search"></i></button>
+                </div> -->
+            </form>
+            <!-- Navbar-->
+            <ul class="navbar-nav ms-auto ms-md-0 me-3 me-lg-4">
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" id="navbarDropdown" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="fas fa-user fa-fw"></i></a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                        <li><a class="dropdown-item" href="#!"><label id="nav_user_name"></label></a></li>
+                        <li><hr class="dropdown-divider" /></li>
+                        <li><a class="dropdown-item" href="#!" onclick="logout()">Logout</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </nav>
+        <div id="layoutSidenav">
+            <div id="layoutSidenav_nav">
+                <nav class="sb-sidenav accordion sb-sidenav-dark" id="sidenavAccordion">
+                    <div class="sb-sidenav-menu">
+                        <div class="nav">
+                            <div class="sb-sidenav-menu-heading">PAGE</div>
+                            <a class="nav-link" href="/user/admin/page">
+                                <div class="sb-nav-link-icon"><i class="fas fa-user fa-fw"></i></div>
+                                User Manager
+                            </a>
+                            <a class="nav-link" href="/room/admin/page">
+                                <div class="sb-nav-link-icon"><i class="fas fa-tachometer-alt"></i></div>
+                                Room Manager
+                            </a>
+                            <a class="nav-link" href="/book/admin/page">
+                                <div class="sb-nav-link-icon"><i class="fas fa-solid fa-clock"></i></div>
+                                Booking Manager
+                            </a>
+                        </div>
+                    </div>
+                    <div class="sb-sidenav-footer">
+                        <div class="small">Logged in as:</div>
+                        <label id="nav_authoirty"> Start Bootstrap </label>
+                        
+                    </div>
+                </nav>
+            </div>
+            <div id="layoutSidenav_content">
+                <main>
+                    <div class="container-fluid px-4">
+
+                        <div class="modal fade " id="user_create_card" aria-labelledby="myModallabel" aria-hidden="true" tabindex="-1">
+                            <div class="modal-dialog mw-100 w-25">
+                                <div class="modal-content card shadow mb-4">
+                                    <div class="card shadow w-100 mb-4">
+                                        <div class="card-header">
+                                            <label id="user_post_label">创建新用户</label>
+                                        </div>
+                                        <div calss="card-body">
+                                            <div class="form-floating mb-3">
+                                                <input class="form-control" type="text" id="user_name_create" placeholder="Username">
+                                                <label for="user_name_create">Username</label>
+                                            </div>
+                                            <div class="form-floating mb-3">
+                                                <input class="form-control" type="password" id="user_password_create" placeholder="Password">
+                                                <label for="user_password_create">Password</label>
+                                            </div>
+                                            <div class="form-floating mb-3">
+                                                <input class="form-control" type="text" id="user_email_create" placeholder="Email">
+                                                <label for="user_email_create">Email</label>
+                                            </div>
+                                        </div>
+                                        <div class="card-footer">
+                                            <a onclick="create_user()" class="btn btn-primary"><span class="text">提交</span></a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h1 class="mt-4">User Manager</h1>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <label>用户列表</label>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-bordered" id="user_table" width="100%" cellspacing="0" style="text-align: center;">
+                                        <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>Name</th>
+                                                <th>Email</th>
+                                                <th>Mark</th>
+                                                <th>Authoirty</th>
+                                                <th>Operation</th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+                                </div>
+                                <div class="d-flex align-items-center justify-content-between mt-4 mb-0">
+                                    <label> </label>
+                                    <div>
+                                        <a class="btn btn-primary px-4" onclick="user_table_reload()"><span class="text">refresh</span></a>
+                                        <a class="btn btn-primary px-4" onclick="open_create_user_window()"><span class="text">create</span></a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                </main>
+                <footer class="py-4 bg-light mt-auto">
+                    <div class="container-fluid px-4">
+                        <div class="d-flex align-items-center justify-content-between small">
+                            <div class="text-muted">Copyright &copy; Ibooking-Admin 2023</div>
+                            <div>
+                                <a href="#">Privacy Policy</a>
+                                &middot;
+                                <a href="#">Terms &amp; Conditions</a>
+                            </div>
+                        </div>
+                    </div>
+                </footer>
+            </div>
+        </div>
+    </body>
+</html>
